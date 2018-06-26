@@ -11,7 +11,16 @@ class ExtendedQuerySet(QuerySet):
     """Base class for query sets."""
 
     def update_or_create(self, defaults=None, **kwargs):
-        obj, created = self.get_or_create(defaults=defaults, **kwargs)
+        # obj, created = self.get_or_create(defaults=defaults, **kwargs)
+        try:
+            obj = self.get(**kwargs)
+            created = False
+        except self.DoesNotExist:
+            if defaults:
+                kwargs.update(defaults)
+            obj = self.create(**kwargs)
+            created = True
+
         if not created:
             self._update_model_with_dict(obj, dict(defaults or {}, **kwargs))
         return obj
@@ -23,10 +32,32 @@ class ExtendedQuerySet(QuerySet):
         return obj
 
 
-class ExtendedManager(models.Manager.from_queryset(ExtendedQuerySet)):
+# class ExtendedManager(models.Manager.from_queryset(ExtendedQuerySet)):
+class ExtendedManager(models.Manager):
     """Manager with common utilities."""
+    def update_or_create(self, defaults=None, **kwargs):
+        # obj, created = self.get_or_create(defaults=defaults, **kwargs)
+        try:
+            obj = self.get(**kwargs)
+            created = False
+        except:
+            if defaults:
+                kwargs.update(defaults)
+            obj = self.create(**kwargs)
+            created = True
+
+        if not created:
+            self._update_model_with_dict(obj, dict(defaults or {}, **kwargs))
+        return obj
+
+    def _update_model_with_dict(self, obj, fields):
+        [setattr(obj, attr_name, attr_value)
+            for attr_name, attr_value in items(fields)]
+        obj.save()
+        return obj
 
 
+# class PeriodicTaskManager(ExtendedManager):
 class PeriodicTaskManager(ExtendedManager):
     """Manager for PeriodicTask model."""
 

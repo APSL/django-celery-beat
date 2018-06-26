@@ -11,6 +11,9 @@ import pytz
 
 schedstate = namedtuple('schedstate', ('is_due', 'next'))
 
+from celery.utils.log import get_logger
+logger = get_logger(__name__)
+debug, info = logger.debug, logger.info
 
 class TzAwareCrontab(schedules.crontab):
     """Timezone Aware Crontab."""
@@ -43,6 +46,7 @@ class TzAwareCrontab(schedules.crontab):
 
         """
         # convert last_run_at to the schedule timezone
+        logger.info("last_run_at {}, tz: {}".format(last_run_at, self.tz))
         last_run_at = last_run_at.astimezone(self.tz)
 
         rem_delta = self.remaining_estimate(last_run_at)

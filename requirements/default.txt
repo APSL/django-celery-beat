@@ -1,2 +1,2 @@
-celery>=4.0,<5.0
-django-timezone-field>=2.0
+celery==3.1.23
+django-timezone-field==1.2

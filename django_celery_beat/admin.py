@@ -10,12 +10,13 @@ from django.utils.translation import ugettext_lazy as _
 
 from celery import current_app
 from celery.utils import cached_property
-from kombu.utils.json import loads
+# from kombu.utils.json import loads
+from django_celery_beat.beat_json import loads
 
 from .models import (
     PeriodicTask, PeriodicTasks,
     IntervalSchedule, CrontabSchedule,
-    SolarSchedule
+    # SolarSchedule
 )
 from .utils import is_database_scheduler
 
@@ -124,7 +125,8 @@ class PeriodicTaskAdmin(admin.ModelAdmin):
             'classes': ('extrapretty', 'wide'),
         }),
         ('Schedule', {
-            'fields': ('interval', 'crontab', 'solar',
+            'fields': ('interval', 'crontab',
+                       # 'solar',
                        'start_time', 'one_off'),
             'classes': ('extrapretty', 'wide', ),
         }),
@@ -197,5 +199,5 @@ class PeriodicTaskAdmin(admin.ModelAdmin):
 
 admin.site.register(IntervalSchedule)
 admin.site.register(CrontabSchedule)
-admin.site.register(SolarSchedule)
+# admin.site.register(SolarSchedule)
 admin.site.register(PeriodicTask, PeriodicTaskAdmin)

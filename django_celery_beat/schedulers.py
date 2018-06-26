@@ -5,23 +5,23 @@ import logging
 
 from multiprocessing.util import Finalize
 
+import pytz
 from celery import current_app
 from celery import schedules
 from celery.beat import Scheduler, ScheduleEntry
 from celery.five import values, items
 from celery.utils.encoding import safe_str, safe_repr
 from celery.utils.log import get_logger
-from celery.utils.time import maybe_make_aware
-from kombu.utils.json import dumps, loads
+from celery.utils.timeutils import maybe_make_aware
+from django_celery_beat.beat_json import dumps, loads
 
-from django.db import transaction, close_old_connections
-from django.db.utils import DatabaseError, InterfaceError
+from django.db import transaction, close_connection
+from django.db.utils import DatabaseError
 from django.core.exceptions import ObjectDoesNotExist
 
 from .models import (
     PeriodicTask, PeriodicTasks,
     CrontabSchedule, IntervalSchedule,
-    SolarSchedule,
 )
 from .utils import make_aware
 
@@ -49,7 +49,6 @@ class ModelEntry(ScheduleEntry):
     model_schedules = (
         (schedules.crontab, CrontabSchedule, 'crontab'),
         (schedules.schedule, IntervalSchedule, 'interval'),
-        (schedules.solar, SolarSchedule, 'solar'),
     )
     save_fields = ['last_run_at', 'total_run_count', 'no_changes']
 
@@ -117,10 +116,16 @@ class ModelEntry(ScheduleEntry):
 
     def _default_now(self):
         now = self.app.now()
+        tz = pytz.timezone('UTC')
+        now = tz.localize(now)
         # The PyTZ datetime must be localised for the Django-Celery-Beat
         # scheduler to work. Keep in mind that timezone arithmatic
         # with a localized timezone may be inaccurate.
+        # TODO timezone
+        logger.info("APP: {} NOW: {}".format(type(self.app.now()), now.tzinfo))
+        # logger.info("APP: {} NOW: ".format(self.app.now().tzinfo.localize(self.app.now().replace(tzinfo=None), now))
         return now.tzinfo.localize(now.replace(tzinfo=None))
+        # return now
 
     def __next__(self):
         self.model.last_run_at = self.app.now()
@@ -201,12 +206,12 @@ class DatabaseScheduler(Scheduler):
         self._finalize = Finalize(self, self.sync, exitpriority=5)
         self.max_interval = (
             kwargs.get('max_interval') or
-            self.app.conf.beat_max_loop_interval or
+            self.app.conf.CELERYBEAT_MAX_LOOP_INTERVAL or
             DEFAULT_MAX_INTERVAL)
 
     def setup_schedule(self):
         self.install_default_entries(self.schedule)
-        self.update_from_dict(self.app.conf.beat_schedule)
+        self.update_from_dict(self.app.conf.CELERYBEAT_SCHEDULE)
 
     def all_as_schedule(self):
         debug('DatabaseScheduler: Fetching database schedule')
@@ -251,8 +256,8 @@ class DatabaseScheduler(Scheduler):
         info('Writing entries...')
         _tried = set()
         try:
-            close_old_connections()
-            with transaction.atomic():
+            close_connection()
+            with transaction.commit_on_success():
                 while self._dirty:
                     try:
                         name = self._dirty.pop()
@@ -260,7 +265,7 @@ class DatabaseScheduler(Scheduler):
                         self.schedule[name].save()
                     except (KeyError, ObjectDoesNotExist):
                         pass
-        except (DatabaseError, InterfaceError) as exc:
+        except DatabaseError as exc:
             # retry later
             self._dirty |= _tried
             logger.exception('Database error while sync: %r', exc)
@@ -281,7 +286,7 @@ class DatabaseScheduler(Scheduler):
 
     def install_default_entries(self, data):
         entries = {}
-        if self.app.conf.result_expires:
+        if self.app.conf.CELERY_TASK_RESULT_EXPIRES:
             entries.setdefault(
                 'celery.backend_cleanup', {
                     'task': 'celery.backend_cleanup',
@@ -304,6 +309,7 @@ class DatabaseScheduler(Scheduler):
 
         if update:
             self.sync()
+            # TODO managers
             self._schedule = self.all_as_schedule()
             # the schedule changed, invalidate the heap in Scheduler.tick
             self._heap = None
